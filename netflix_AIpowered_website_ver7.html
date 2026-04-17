@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Netflix – AI Content Discovery</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red: #E50914;
+      --dark: #141414;
+      --card: #1a1a1a;
+      --muted: #aaa;
+      --font-display: 'Bebas Neue', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+    }
+    body { background: var(--dark); color: #fff; font-family: var(--font-body); min-height: 100vh; }
+
+    /* ── API SETUP SCREEN ── */
+    #setup-screen {
+      position: fixed; inset: 0; background: #0a0a0a;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999; flex-direction: column; gap: 0;
+    }
+    #setup-screen.hidden { display: none; }
+    .setup-card {
+      background: #1c1c1c; border: 1px solid #333; border-radius: 12px;
+      padding: 2.5rem 2.8rem; width: 480px; max-width: 95vw;
+    }
+    .setup-logo { font-family: var(--font-display); font-size: 2.4rem; color: var(--red); letter-spacing: 3px; margin-bottom: 0.3rem; }
+    .setup-title { font-size: 1.1rem; color: #ccc; margin-bottom: 0.4rem; }
+    .setup-sub { font-size: 0.8rem; color: var(--muted); margin-bottom: 2rem; line-height: 1.6; }
+    .setup-label { font-size: 0.78rem; color: #bbb; margin-bottom: 6px; display: block; }
+    .setup-input {
+      width: 100%; background: rgba(255,255,255,0.07); border: 1px solid #444;
+      border-radius: 6px; padding: 10px 14px; color: #fff;
+      font-family: var(--font-body); font-size: 0.85rem; outline: none;
+      margin-bottom: 1rem; transition: border .2s;
+    }
+    .setup-input:focus { border-color: var(--red); }
+    .setup-input::placeholder { color: #555; }
+    .setup-btn {
+      width: 100%; background: var(--red); border: none; border-radius: 6px;
+      color: #fff; font-family: var(--font-body); font-weight: 500;
+      font-size: 0.9rem; padding: 12px; cursor: pointer; transition: opacity .2s;
+    }
+    .setup-btn:hover { opacity: .85; }
+    .setup-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .setup-error { color: #ff6b6b; font-size: 0.78rem; margin-top: 8px; min-height: 18px; }
+    .setup-hint {
+      background: rgba(229,9,20,0.08); border: 1px solid rgba(229,9,20,0.2);
+      border-radius: 6px; padding: 10px 14px; font-size: 0.75rem; color: #bbb;
+      line-height: 1.6; margin-top: 1.2rem;
+    }
+    .setup-hint a { color: #ff7070; }
+    .setup-divider { display: flex; align-items: center; gap: 10px; margin: 1rem 0; }
+    .setup-divider span { color: #555; font-size: 0.75rem; }
+    .setup-divider hr { flex: 1; border: none; border-top: 1px solid #333; }
+
+    /* ── LOADING OVERLAY ── */
+    #loading-overlay {
+      position: fixed; inset: 0; background: #0a0a0a;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 998; flex-direction: column; gap: 1rem;
+    }
+    #loading-overlay.hidden { display: none; }
+    .loading-logo { font-family: var(--font-display); font-size: 3rem; color: var(--red); letter-spacing: 4px; }
+    .loading-bar-wrap { width: 280px; height: 3px; background: #333; border-radius: 2px; overflow: hidden; }
+    .loading-bar { height: 100%; background: var(--red); border-radius: 2px; width: 0%; transition: width .4s ease; }
+    .loading-text { font-size: 0.82rem; color: var(--muted); letter-spacing: 1px; }
+
+    /* ── NAV ── */
+    nav {
+      display: flex; align-items: center; gap: 2rem; padding: 1rem 2rem;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.95), transparent);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-logo { font-family: var(--font-display); font-size: 2rem; color: var(--red); letter-spacing: 2px; cursor: default; user-select: none; }
+    .nav-links { display: flex; gap: 1.2rem; }
+    .nav-links button { background: none; border: none; color: var(--muted); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer; transition: color .2s; }
+    .nav-links button:hover, .nav-links button.active { color: #fff; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
+    .search-bar {
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 4px; padding: 7px 14px; color: #fff; font-family: var(--font-body);
+      font-size: 0.85rem; width: 210px; outline: none; transition: border .2s;
+    }
+    .search-bar::placeholder { color: var(--muted); }
+    .search-bar:focus { border-color: rgba(255,255,255,0.5); }
+    .ai-btn {
+      background: var(--red); border: none; border-radius: 4px; color: #fff;
+      font-family: var(--font-body); font-size: 0.82rem; font-weight: 500;
+      padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: opacity .2s;
+    }
+    .ai-btn:hover { opacity: .85; }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative; height: 520px; display: flex; align-items: flex-end;
+      padding: 3rem 2.5rem;
+      background: linear-gradient(to right, rgba(0,0,0,0.85) 42%, transparent),
+                  linear-gradient(to top, #141414 2%, transparent 55%),
+                  #1a1a1a center/cover no-repeat;
+      transition: background-image .6s;
+    }
+    .hero-badge {
+      background: var(--red); color: #fff; font-size: 0.68rem; font-weight: 500;
+      letter-spacing: 1.5px; text-transform: uppercase; padding: 3px 9px;
+      border-radius: 2px; margin-bottom: 0.8rem; display: inline-block;
+    }
+    .hero-title { font-family: var(--font-display); font-size: 3.8rem; line-height: 1; letter-spacing: 2px; margin-bottom: 0.7rem; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); }
+    .hero-meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.9rem; }
+    .hero-desc { max-width: 480px; font-size: 0.9rem; line-height: 1.65; color: #ccc; margin-bottom: 1.6rem; }
+    .hero-actions { display: flex; gap: 12px; }
+    .btn-play { background: #fff; color: #000; border: none; border-radius: 4px; padding: 10px 24px; font-family: var(--font-body); font-weight: 500; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 7px; }
+    .btn-play:hover { background: #ddd; }
+    .btn-more { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 4px; padding: 10px 24px; font-family: var(--font-body); font-size: 0.9rem; cursor: pointer; }
+    .btn-more:hover { background: rgba(255,255,255,0.3); }
+
+    /* ── ROWS ── */
+    .section { padding: 1.5rem 2rem; }
+    .section-title { font-family: var(--font-display); font-size: 1.15rem; letter-spacing: 1px; color: #ddd; margin-bottom: 1rem; display: flex; align-items: center; gap: 10px; }
+    .tmdb-badge { font-family: var(--font-body); font-size: 0.62rem; font-weight: 500; background: #01b4e4; color: #fff; padding: 2px 7px; border-radius: 3px; letter-spacing: 0; }
+    .row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: thin; scrollbar-color: #333 transparent; }
+    .row::-webkit-scrollbar { height: 4px; }
+    .row::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+    /* ── CARDS ── */
+    .card {
+      flex: 0 0 160px; border-radius: 6px; overflow: hidden; cursor: pointer;
+      transition: transform .25s, box-shadow .25s; position: relative;
+      background: var(--card);
+    }
+    .card:hover { transform: scale(1.07); z-index: 10; box-shadow: 0 8px 32px rgba(0,0,0,0.7); }
+    .card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; }
+    .card-skeleton { width: 100%; aspect-ratio: 2/3; background: linear-gradient(90deg, #1e1e1e 25%, #2a2a2a 50%, #1e1e1e 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .card-info { padding: 8px; background: #222; }
+    .card-title { font-size: 0.78rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-meta { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+    .match { color: #46d369; font-size: 0.68rem; font-weight: 500; margin-top: 2px; }
+    .rating-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.78); color: #f5c518; font-size: 0.68rem; padding: 2px 6px; border-radius: 3px; font-weight: 500; }
+
+    /* ── FLOAT CHAT ── */
+    #float-chat {
+      position: fixed; bottom: 1.8rem; right: 1.8rem; z-index: 150;
+      background: var(--red); border: none; border-radius: 50px;
+      padding: 13px 22px; color: #fff; font-family: var(--font-body);
+      font-weight: 500; font-size: 0.88rem; cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      animation: pulse 2.5s infinite;
+    }
+    @keyframes pulse { 0%,100%{box-shadow:0 4px 20px rgba(229,9,20,0.5)} 50%{box-shadow:0 4px 36px rgba(229,9,20,0.85)} }
+
+    /* ── CHAT OVERLAY ── */
+    #chat-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; align-items: flex-end; justify-content: flex-end; padding: 1.8rem; }
+    #chat-overlay.open { display: flex; }
+    #chat-box { width: 390px; max-height: 620px; background: #1c1c1c; border-radius: 14px; border: 1px solid rgba(229,9,20,0.35); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.85); }
+    .chat-header { background: var(--red); padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+    .chat-header-icon { width: 34px; height: 34px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .chat-header h3 { font-family: var(--font-display); font-size: 1rem; letter-spacing: 1px; color: #fff; flex: 1; }
+    .chat-subtitle { font-size: 0.68rem; color: rgba(255,255,255,0.75); font-family: var(--font-body); }
+    .chat-close { background: none; border: none; color: #fff; font-size: 1.3rem; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: rgba(229,9,20,0.3) transparent; }
+    .msg { max-width: 90%; padding: 10px 14px; border-radius: 12px; font-size: 0.82rem; line-height: 1.58; }
+    .msg.ai { background: #2a2a2a; color: #eee; border-radius: 12px 12px 12px 3px; align-self: flex-start; }
+    .msg.user { background: var(--red); color: #fff; border-radius: 12px 12px 3px 12px; align-self: flex-end; }
+    .msg.loading { background: #2a2a2a; color: var(--muted); font-style: italic; align-self: flex-start; }
+    .chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+    .suggest-btn { background: rgba(229,9,20,0.12); border: 1px solid rgba(229,9,20,0.32); color: #ff7070; border-radius: 20px; font-size: 0.72rem; padding: 5px 11px; cursor: pointer; font-family: var(--font-body); transition: background .2s; }
+    .suggest-btn:hover { background: rgba(229,9,20,0.28); }
+    .chat-input-row { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .chat-input { flex: 1; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 22px; padding: 9px 15px; color: #fff; font-family: var(--font-body); font-size: 0.82rem; outline: none; transition: border .2s; }
+    .chat-input::placeholder { color: var(--muted); }
+    .chat-input:focus { border-color: rgba(229,9,20,0.5); }
+    .chat-send { background: var(--red); border: none; border-radius: 50%; width: 38px; height: 38px; color: #fff; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity .2s; }
+    .chat-send:disabled { opacity: .38; cursor: not-allowed; }
+
+    footer { text-align: center; padding: 2rem; color: #555; font-size: 0.78rem; border-top: 1px solid #222; margin-top: 2rem; }
+    footer a { color: #777; }
+  </style>
+
+  <script defer>
+
+// ─────────────────────────────────────────────────────────────
+// MOVIELENS CATALOG
+// Source: MovieLens ml-latest-small (GroupLens Research)
+// tmdb_id maps MovieLens entries to TMDB for live metadata fetch
+// ml_rating = average rating from MovieLens dataset (0-5 scale → shown /10)
+// ─────────────────────────────────────────────────────────────
+const CATALOG = {
+  ai: [
+    { title:"The Shawshank Redemption", year:1994, tmdb_id:278,  ml_rating:4.4, match:98 },
+    { title:"Forrest Gump",             year:1994, tmdb_id:13,   ml_rating:4.1, match:95 },
+    { title:"The Silence of the Lambs", year:1991, tmdb_id:274,  ml_rating:4.1, match:92 },
+    { title:"Goodfellas",               year:1990, tmdb_id:769,  ml_rating:4.2, match:91 },
+    { title:"Se7en",                    year:1995, tmdb_id:807,  ml_rating:4.1, match:90 },
+    { title:"Braveheart",               year:1995, tmdb_id:197,  ml_rating:3.9, match:88 },
+  ],
+  top: [
+    { title:"The Godfather",            year:1972, tmdb_id:238,  ml_rating:4.5, match:97 },
+    { title:"Pulp Fiction",             year:1994, tmdb_id:680,  ml_rating:4.3, match:94 },
+    { title:"Schindler's List",         year:1993, tmdb_id:393,  ml_rating:4.4, match:96 },
+    { title:"12 Angry Men",             year:1957, tmdb_id:389,  ml_rating:4.4, match:93 },
+    { title:"The Dark Knight",          year:2008, tmdb_id:155,  ml_rating:4.3, match:97 },
+    { title:"Fight Club",               year:1999, tmdb_id:550,  ml_rating:4.2, match:91 },
+  ],
+  drama: [
+    { title:"Rain Man",                        year:1988, tmdb_id:380,  ml_rating:3.7, match:85 },
+    { title:"One Flew Over the Cuckoo's Nest", year:1975, tmdb_id:510,  ml_rating:4.2, match:89 },
+    { title:"The Green Mile",                  year:1999, tmdb_id:497,  ml_rating:4.0, match:88 },
+    { title:"American History X",              year:1998, tmdb_id:227,  ml_rating:4.1, match:87 },
+    { title:"Good Will Hunting",               year:1997, tmdb_id:489,  ml_rating:4.0, match:86 },
+    { title:"Fargo",                           year:1996, tmdb_id:275,  ml_rating:4.0, match:84 },
+  ],
+  scifi: [
+    { title:"2001: A Space Odyssey",  year:1968, tmdb_id:62,   ml_rating:3.9, match:88 },
+    { title:"The Matrix",             year:1999, tmdb_id:603,  ml_rating:4.2, match:93 },
+    { title:"Aliens",                 year:1986, tmdb_id:679,  ml_rating:4.0, match:89 },
+    { title:"Blade Runner",           year:1982, tmdb_id:78,   ml_rating:3.8, match:85 },
+    { title:"The Empire Strikes Back",year:1980, tmdb_id:1891, ml_rating:4.2, match:92 },
+    { title:"Jurassic Park",          year:1993, tmdb_id:329,  ml_rating:3.8, match:86 },
+  ]
+};
+
+// Runtime enriched data (filled by TMDB API on page load)
+const ENRICHED = {};
+
+let TMDB_KEY     = '';
+let GEMINI_KEY   = '';
+let GEMINI_MODEL = 'gemini-2.5-flash';
+
+// ─────────────────────────────────────────────────────────────
+// TMDB API HELPERS
+// Docs: https://developer.themoviedb.org/reference/movie-details
+// ─────────────────────────────────────────────────────────────
+const TMDB_BASE    = 'https://api.themoviedb.org/3';
+const TMDB_IMG     = 'https://image.tmdb.org/t/p/';
+const TMDB_IMG_W   = 'w300';   // poster size for cards
+const TMDB_IMG_BG  = 'w1280';  // backdrop size for hero
+
+async function fetchTMDB(path) {
+  const res = await fetch(`${TMDB_BASE}${path}?language=en-US&api_key=${TMDB_KEY}`, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`TMDB ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+async function enrichMovie(movie) {
+  try {
+    const data = await fetchTMDB(`/movie/${movie.tmdb_id}`);
+    return {
+      ...movie,
+      tmdb_title:    data.title,
+      overview:      data.overview,
+      genres:        (data.genres || []).map(g => g.name).join(' / '),
+      runtime:       data.runtime ? `${data.runtime} min` : '',
+      vote_average:  data.vote_average ? data.vote_average.toFixed(1) : (movie.ml_rating * 2).toFixed(1),
+      poster_url:    data.poster_path   ? `${TMDB_IMG}${TMDB_IMG_W}${data.poster_path}`   : '',
+      backdrop_url:  data.backdrop_path ? `${TMDB_IMG}${TMDB_IMG_BG}${data.backdrop_path}` : '',
+      tagline:       data.tagline || '',
+    };
+  } catch (e) {
+    // Fallback: use MovieLens data only if TMDB call fails
+    return {
+      ...movie,
+      tmdb_title:   movie.title,
+      overview:     'Overview unavailable — TMDB fetch failed.',
+      genres:       'Drama',
+      runtime:      '',
+      vote_average: (movie.ml_rating * 2).toFixed(1),
+      poster_url:   '',
+      backdrop_url: '',
+      tagline:      '',
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// APP LAUNCH — fetch all TMDB data on load
+// ─────────────────────────────────────────────────────────────
+async function launchApp() {
+  const tmdbVal   = document.getElementById('tmdb-key-input').value.trim();
+  const geminiVal = document.getElementById('gemini-key-input').value.trim();
+  const errEl     = document.getElementById('setup-error');
+
+  if (!tmdbVal)   { errEl.textContent = 'TMDB API key is required.'; return; }
+  if (!geminiVal) { errEl.textContent = 'Gemini API key is required.'; return; }
+
+  TMDB_KEY   = tmdbVal;
+  GEMINI_KEY = geminiVal;
+  sessionStorage.setItem('tmdb_key',   TMDB_KEY);
+  sessionStorage.setItem('gemini_key', GEMINI_KEY);
+
+  document.getElementById('launch-btn').disabled = true;
+  document.getElementById('setup-error').textContent = '';
+
+  // Verify TMDB key with a quick test call
+  try {
+    await fetchTMDB('/movie/278'); // Shawshank
+  } catch(e) {
+    errEl.textContent = 'TMDB key invalid or network error. Please check your key.';
+    document.getElementById('launch-btn').disabled = false;
+    return;
+  }
+
+  document.getElementById('setup-screen').classList.add('hidden');
+  document.getElementById('loading-overlay').classList.remove('hidden');
+
+  await loadAllMovies();
+
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
+function setLoadingProgress(pct, text) {
+  document.getElementById('loading-bar').style.width = pct + '%';
+  document.getElementById('loading-text').textContent = text;
+}
+
+async function loadAllMovies() {
+  const allCategories = Object.entries(CATALOG);
+  const allMovies     = allCategories.flatMap(([cat, movies]) => movies.map(m => ({ ...m, cat })));
+  const total         = allMovies.length;
+  let   done          = 0;
+
+  // Fetch in small batches to avoid rate limiting (TMDB free tier: 40 req/10s)
+  const BATCH = 4;
+  for (let i = 0; i < allMovies.length; i += BATCH) {
+    const batch   = allMovies.slice(i, i + BATCH);
+    const results = await Promise.all(batch.map(m => enrichMovie(m)));
+
+    results.forEach(enriched => {
+      if (!ENRICHED[enriched.cat]) ENRICHED[enriched.cat] = [];
+      ENRICHED[enriched.cat].push(enriched);
+    });
+
+    done += batch.length;
+    const pct = Math.round((done / total) * 100);
+    setLoadingProgress(pct, `Fetching from TMDB... ${done}/${total} movies (${pct}%)`);
+
+    // Render rows progressively as batches complete
+    Object.entries(ENRICHED).forEach(([cat, movies]) => renderRow(`row-${cat}`, movies));
+
+    // Small delay between batches to be kind to the API
+    if (i + BATCH < allMovies.length) await sleep(250);
+  }
+
+  // Set hero to first AI-recommended movie
+  const hero = ENRICHED['ai']?.[0];
+  if (hero) updateHero(hero);
+
+  // Build system prompt for Gemini with live TMDB data
+  buildSystemPrompt();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────────────────────
+// UI RENDERING
+// ─────────────────────────────────────────────────────────────
+function renderRow(id, movies) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  // Sort to maintain stable category order
+  const sorted = [...movies].sort((a, b) => {
+    const cat    = a.cat;
+    const orig   = CATALOG[cat] || [];
+    const idxA   = orig.findIndex(m => m.tmdb_id === a.tmdb_id);
+    const idxB   = orig.findIndex(m => m.tmdb_id === b.tmdb_id);
+    return idxA - idxB;
+  });
+
+  el.innerHTML = sorted.map(m => `
+    <div class="card" onclick="handleCardClick(${m.tmdb_id}, '${m.cat}')">
+      ${m.poster_url
+        ? `<img src="${m.poster_url}" alt="${m.title}" loading="lazy" onerror="this.style.display='none'">`
+        : `<div class="card-skeleton"></div>`
+      }
+      <div class="rating-badge">★ ${m.vote_average}</div>
+      <div class="card-info">
+        <div class="card-title" title="${m.tmdb_title || m.title}">${m.tmdb_title || m.title}</div>
+        <div class="card-meta">${m.year} · ${m.genres || ''}</div>
+        <div class="match">${m.match}% Match</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateHero(movie) {
+  const heroEl = document.getElementById('hero');
+  if (movie.backdrop_url) {
+    heroEl.style.backgroundImage = `
+      linear-gradient(to right, rgba(0,0,0,0.85) 42%, transparent),
+      linear-gradient(to top, #141414 2%, transparent 55%),
+      url('${movie.backdrop_url}')
+    `;
+  }
+  document.getElementById('hero-title').textContent = movie.tmdb_title || movie.title;
+  document.getElementById('hero-meta').textContent  =
+    [movie.year, movie.genres, movie.vote_average ? `★ ${movie.vote_average}` : '', movie.runtime]
+    .filter(Boolean).join('  ·  ');
+  document.getElementById('hero-desc').textContent  = movie.overview || movie.tagline || '';
+}
+
+function handleCardClick(tmdbId, cat) {
+  const movie = (ENRICHED[cat] || []).find(m => m.tmdb_id === tmdbId);
+  if (movie) updateHero(movie);
+}
+
+// ─────────────────────────────────────────────────────────────
+// GEMINI AI CHAT
+// ─────────────────────────────────────────────────────────────
+let SYSTEM_PROMPT = '';
+let chatHistory   = [];
+let chatOpen      = false;
+
+function buildSystemPrompt() {
+  const allMovies = Object.values(ENRICHED).flat();
+  const catalog   = allMovies.map(m =>
+    `- ${m.tmdb_title || m.title} (${m.year}) [${m.genres}] ★${m.vote_average} — ${m.overview?.substring(0, 120) || ''}`
+  ).join('\n');
+
+  SYSTEM_PROMPT = `You are CineAI, an expert AI movie recommendation assistant embedded in a Netflix-style streaming platform. This is a CECS 451 university prototype using real data from the MovieLens dataset enriched with TMDB metadata.
+
+You have access to these movies (MovieLens catalog enriched live from TMDB API):
+${catalog}
+
+Rules:
+1. ONLY recommend movies from the list above — never invent titles.
+2. Be warm, conversational, and enthusiastic about cinema.
+3. Ask ONE natural follow-up question per response to refine preferences (mood, pacing, length, genre, intensity).
+4. Format each recommendation: **Movie Title (Year)** ★X.X — brief personal reason they'd enjoy it.
+5. Mention match percentage (e.g., "97% match") based on how well it fits their preferences.
+6. Keep responses under 220 words.
+7. Occasionally note that data comes from MovieLens + TMDB to reinforce the academic context.`;
+}
+
+function openChat(mode) {
+  document.getElementById('chat-overlay').classList.add('open');
+  chatOpen = true;
+  if (chatHistory.length === 0) {
+    const msg = mode === 'search'
+      ? "Hi! Describe your mood, a vibe, or something like \"I want something short and intense\" — and I'll search our MovieLens+TMDB library for you!"
+      : "Hey! 🎬 I'm CineAI. Our movie catalog is powered by MovieLens ratings and live TMDB metadata. Tell me your mood or what you're craving, and I'll find the perfect pick!";
+    addMessage('ai', msg);
+  }
+}
+
+function closeChat() {
+  document.getElementById('chat-overlay').classList.remove('open');
+  chatOpen = false;
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('chat-overlay')) closeChat();
+}
+
+function addMessage(role, text) {
+  const c   = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+  return div;
+}
+
+async function sendMessage() {
+  const input   = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('send-btn');
+  const text    = input.value.trim();
+  if (!text) return;
+  if (!GEMINI_KEY) { addMessage('ai', '⚠️ Gemini key not found. Please reload and enter your keys.'); return; }
+
+  input.value = '';
+  document.getElementById('chat-suggestions').style.display = 'none';
+  addMessage('user', text);
+  chatHistory.push({ role: 'user', parts: [{ text }] });
+  sendBtn.disabled = true;
+  const loader = addMessage('loading', '✦ Searching MovieLens + TMDB catalog...');
+
+  try {
+    const MODELS = ['gemini-2.5-flash-lite'];
+    let data = null;
+    let usedModel = '';
+    for (const model of MODELS) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: chatHistory,
+            generationConfig: { maxOutputTokens: 512, temperature: 0.75 }
+          })
+        }
+      );
+      data = await res.json();
+      // If overloaded or quota error, try next model
+      if (data.error) {
+        const code = data.error.code;
+        const msg  = data.error.message || '';
+        if (code === 503 || code === 429 || msg.includes('high demand') || msg.includes('quota')) {
+          console.warn(`${model} unavailable, trying fallback...`);
+          continue;
+        }
+        // Any other error — surface it immediately
+        loader.remove();
+        addMessage('ai', `⚠️ Gemini error: ${data.error.message}`);
+        sendBtn.disabled = false;
+        return;
+      }
+      usedModel = model;
+      break;
+    }
+    loader.remove();
+    if (!data || data.error) {
+      addMessage('ai', '⚠️ Both Gemini models are currently overloaded. Please wait a minute and try again.');
+      sendBtn.disabled = false;
+      return;
+    }
+    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, could not generate a response.';
+    addMessage('ai', aiText);
+    chatHistory.push({ role: 'model', parts: [{ text: aiText }] });
+  } catch (err) {
+    loader.remove();
+    addMessage('ai', `⚠️ Connection error: ${err.message}`);
+  }
+
+  sendBtn.disabled = false;
+  input.focus();
+}
+
+function sendSuggestion(btn) {
+  document.getElementById('chat-input').value = btn.textContent;
+  sendMessage();
+}
+
+function setActive(btn) {
+  document.querySelectorAll('.nav-links button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// Keyboard
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = e.target.value.trim();
+    if (q) { openChat(); document.getElementById('chat-input').value = `Find me something like: ${q}`; sendMessage(); }
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && chatOpen) closeChat(); });
+
+// Wire up launch button after DOM ready
+document.addEventListener('DOMContentLoaded', function() {
+  const btn = document.getElementById('launch-btn');
+  if (btn) btn.addEventListener('click', launchApp);
+  // Restore keys from session if already set
+  (function() {
+  const tk = sessionStorage.getItem('tmdb_key');
+  const gk = sessionStorage.getItem('gemini_key');
+  if (tk) document.getElementById('tmdb-key-input').value   = tk;
+  if (gk) document.getElementById('gemini-key-input').value = gk;
+  })();
+});
+
+  </script>
+</head>
+<body>
+
+<!-- ── SETUP SCREEN ── -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="setup-logo">NETFLIX</div>
+    <div class="setup-title">AI Content Discovery</div>
+    <div class="setup-sub">Enter your API keys to load live movie data from TMDB and enable the AI chatbot.</div>
+
+    <label class="setup-label">TMDB API Key <span style="color:#46d369">(required — loads posters & metadata)</span></label>
+    <input class="setup-input" id="tmdb-key-input" type="password" placeholder="eyJhbGciOi... or your v3 API key" />
+
+    <label class="setup-label">Gemini API Key <span style="color:var(--muted)">(required — powers AI chatbot by using gemini-2.5-flash-lite)</span></label>
+    <input class="setup-input" id="gemini-key-input" type="password" placeholder="AIzaSy..." />
+
+
+    <button class="setup-btn" id="launch-btn" onclick="launchApp()">Load Movies & Launch</button>
+    <div class="setup-error" id="setup-error"></div>
+
+    <div class="setup-hint">
+      <strong style="color:#ddd">Get free API keys:</strong><br>
+      TMDB: <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a> (free, instant)<br>
+      Gemini: <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> (free tier available)
+    </div>
+  </div>
+</div>
+
+<!-- ── LOADING OVERLAY ── -->
+<div id="loading-overlay" class="hidden">
+  <div class="loading-logo">NETFLIX</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="loading-bar"></div></div>
+  <div class="loading-text" id="loading-text">Connecting to TMDB...</div>
+</div>
+
+<!-- ── MAIN APP ── -->
+<nav>
+  <div class="nav-logo">NETFLIX</div>
+  <div class="nav-links">
+    <button class="active" onclick="setActive(this)">Home</button>
+    <button onclick="setActive(this)">Movies</button>
+    <button onclick="setActive(this)">TV Shows</button>
+    <button onclick="setActive(this)">My List</button>
+  </div>
+  <div class="nav-right">
+    <input class="search-bar" id="search-input" type="text" placeholder="Search titles, moods..." />
+    <button class="ai-btn" onclick="openChat('search')">✦ AI Search</button>
+  </div>
+</nav>
+
+<div class="hero" id="hero">
+  <div>
+    <div class="hero-badge">✦ AI Pick For You</div>
+    <div class="hero-title" id="hero-title">Loading...</div>
+    <div class="hero-meta" id="hero-meta"></div>
+    <div class="hero-desc" id="hero-desc">Fetching from TMDB...</div>
+    <div class="hero-actions">
+      <button class="btn-play">▶ &nbsp;Play</button>
+      <button class="btn-more">ℹ More Info</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">✦ AI Recommended For You <span class="tmdb-badge">LIVE TMDB</span></div>
+  <div class="row" id="row-ai"></div>
+</div>
+<div class="section">
+  <div class="section-title">Top Rated · MovieLens Dataset <span class="tmdb-badge">LIVE TMDB</span></div>
+  <div class="row" id="row-top"></div>
+</div>
+<div class="section">
+  <div class="section-title">Classic Drama &amp; Crime <span class="tmdb-badge">LIVE TMDB</span></div>
+  <div class="row" id="row-drama"></div>
+</div>
+<div class="section">
+  <div class="section-title">Sci-Fi &amp; Adventure <span class="tmdb-badge">LIVE TMDB</span></div>
+  <div class="row" id="row-scifi"></div>
+</div>
+
+<footer>
+  CECS 451 Term Project · Team 8 · AI-Based Content Discovery System<br>
+  Movie data: <a href="https://grouplens.org/datasets/movielens/" target="_blank">MovieLens Dataset</a> (GroupLens) &nbsp;·&nbsp;
+  Metadata &amp; posters: <a href="https://www.themoviedb.org/" target="_blank">TMDB API</a> &nbsp;·&nbsp;
+  AI: Google Gemini 2.5 Flash
+</footer>
+
+<button id="float-chat" onclick="openChat()">✦ &nbsp;AI Movie Chat</button>
+
+<div id="chat-overlay" onclick="handleOverlayClick(event)">
+  <div id="chat-box">
+    <div class="chat-header">
+      <div class="chat-header-icon">✦</div>
+      <div>
+        <h3>CineAI Assistant</h3>
+        <div class="chat-subtitle">Powered by Gemini 2.5 Flash · MovieLens + TMDB Data</div>
+      </div>
+      <button class="chat-close" onclick="closeChat()">✕</button>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-suggestions" id="chat-suggestions">
+      <button class="suggest-btn" onclick="sendSuggestion(this)">I'm feeling adventurous</button>
+      <button class="suggest-btn" onclick="sendSuggestion(this)">Something to make me cry</button>
+      <button class="suggest-btn" onclick="sendSuggestion(this)">Mind-bending thriller</button>
+      <button class="suggest-btn" onclick="sendSuggestion(this)">Cozy comedy night</button>
+      <button class="suggest-btn" onclick="sendSuggestion(this)">Short &amp; intense (under 2h)</button>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chat-input" placeholder="Tell me your mood or what you want to watch..." />
+      <button class="chat-send" id="send-btn" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>
